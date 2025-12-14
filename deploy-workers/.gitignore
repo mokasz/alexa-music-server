@@ -1,0 +1,22 @@
+# Temporary files
+.temp-*
+.temp-audio-conversion/
+
+# Converted audio output
+converted-audio/
+
+# KV data exports
+*.kv-data.json
+
+# Configuration files with secrets
+config/google-drive-credentials.json
+
+# Wrangler
+.wrangler/
+.dev.vars
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log

@@ -1,0 +1,17 @@
+{
+  "description": "Google Drive API configuration for music file access",
+  "version": "1.0.0",
+  "folderId": "1-xhgFnP3CnU_RMXiIG3IMXED-pexE2H1",
+  "credentialsPath": "./config/google-drive-credentials.json",
+  "shareType": "service-account",
+  "apiSettings": {
+    "version": "v3",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.readonly"
+    ]
+  },
+  "caching": {
+    "enabled": true,
+    "ttl": 3600
+  }
+}

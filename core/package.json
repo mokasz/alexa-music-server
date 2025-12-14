@@ -1,0 +1,23 @@
+{
+  "name": "@alexa-music/core",
+  "version": "1.0.0",
+  "description": "Shared core logic for Alexa music skill",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./services/metadataParser": "./services/metadataParser.js",
+    "./services/musicLibrary.interface": "./services/musicLibrary.interface.js",
+    "./services/playlistManager.interface": "./services/playlistManager.interface.js",
+    "./utils/textNormalizer": "./utils/textNormalizer.js"
+  },
+  "private": true,
+  "dependencies": {
+    "ask-sdk-core": "^2.13.0",
+    "ask-sdk-model": "^1.40.0",
+    "music-metadata": "^8.1.4",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@alexa-music/lambda-handler",
+  "version": "1.0.0",
+  "description": "AWS Lambda handler for Alexa music skill",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@alexa-music/core": "1.0.0",
+    "ask-sdk-core": "^2.13.0",
+    "ask-sdk-model": "^1.40.0",
+    "@aws-sdk/client-dynamodb": "^3.540.0",
+    "@aws-sdk/lib-dynamodb": "^3.540.0",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "alexa-music-project",
+  "version": "1.0.0",
+  "description": "Alexa music streaming skill with Express and Lambda deployments",
+  "private": true,
+  "workspaces": [
+    "core",
+    "deploy-express",
+    "deploy-workers"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "start:express": "cd deploy-express && npm start",
+    "dev:express": "cd deploy-express && npm run dev",
+    "deploy:lambda": "cd deploy-lambda && ./scripts/deploy.sh dev",
+    "test": "echo \"No tests specified yet\""
+  },
+  "keywords": [
+    "alexa",
+    "music",
+    "streaming",
+    "aws-lambda",
+    "serverless"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

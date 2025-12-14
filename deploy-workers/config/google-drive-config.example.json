@@ -1,0 +1,23 @@
+{
+  "description": "Google Drive API configuration for music file access",
+  "version": "1.0.0",
+  "folderId": "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE",
+  "credentialsPath": "./config/google-drive-credentials.json",
+  "shareType": "service-account",
+  "apiSettings": {
+    "version": "v3",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.readonly"
+    ]
+  },
+  "caching": {
+    "enabled": true,
+    "ttl": 3600,
+    "description": "Cache file metadata for 1 hour"
+  },
+  "notes": {
+    "setup": "See GOOGLE_DRIVE_SETUP.md for complete setup instructions",
+    "folderId": "Get from Google Drive folder URL: https://drive.google.com/drive/folders/{FOLDER_ID}",
+    "serviceAccount": "Create service account in Google Cloud Console and share folder with service account email"
+  }
+}

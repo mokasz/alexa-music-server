@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Data files
+deploy-express/data/
+*.json.bak
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Google Drive API credentials (IMPORTANT!)
+deploy-workers/config/google-drive-credentials.json
+deploy-workers/config/google-drive-config.json
+*.pem
+*.key
+
+# Temporary files
+deploy-workers/.temp-*
+*.tmp
+.cache/
+
+# Cloudflare Workers
+.wrangler/
+.dev.vars
+
+# Build outputs
+dist/
+build/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Cloudflare Tunnel (if using)
+.cloudflared/
+
+# Backup files
+*.old.md
+*.bak
+
+# Blog articles (personal)
+ZENN_ARTICLE.md
+*.article.md
+
+# Development notes (internal)
+.claude-work-status.json
+NEXT-SESSION.txt
+RESUME-INSTRUCTIONS.md
+PHASE1-COMPLETION-REPORT.md
+
+# Google Drive mapping (contains file IDs)
+deploy-workers/config/google-drive-mapping.json
+
+# Converted audio output
+deploy-workers/converted-audio/

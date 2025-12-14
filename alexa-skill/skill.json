@@ -1,0 +1,49 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "ja-JP": {
+          "summary": "ローカルMP3ファイルを再生するカスタム音楽スキル",
+          "examplePhrases": [
+            "Alexa、マイミュージックを開いて",
+            "Alexa、マイミュージックでSummer Dreamを再生して",
+            "Alexa、次の曲"
+          ],
+          "keywords": [
+            "音楽",
+            "MP3",
+            "プレイヤー",
+            "ローカル"
+          ],
+          "name": "マイミュージック",
+          "description": "自宅のMacに保存されているMP3ファイルをAmazon Echoで再生できるカスタムスキルです。曲名やアーティスト名を言うだけで、お気に入りの音楽を楽しめます。"
+        }
+      },
+      "isAvailableWorldwide": false,
+      "testingInstructions": "このスキルは開発者のプライベート使用のみを目的としています。",
+      "category": "MUSIC_AND_AUDIO",
+      "distributionCountries": ["JP"]
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "https://your-tunnel-url.cfargotunnel.com/alexa"
+        },
+        "interfaces": [
+          {
+            "type": "AUDIO_PLAYER"
+          }
+        ]
+      }
+    },
+    "manifestVersion": "1.0",
+    "permissions": [],
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false
+    }
+  }
+}

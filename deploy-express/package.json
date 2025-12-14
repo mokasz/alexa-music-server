@@ -1,0 +1,37 @@
+{
+  "name": "alexa-music-server",
+  "version": "1.0.0",
+  "description": "Custom Alexa skill for streaming local MP3 files from Mac to Amazon Echo",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "scan": "node scripts/scan-music.js",
+    "tunnel": "cloudflared tunnel run alexa-music-tunnel",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "alexa",
+    "music",
+    "streaming",
+    "mp3",
+    "cloudflare-tunnel"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@alexa-music/core": "^1.0.0",
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "winston": "^3.11.0",
+    "node-cache": "^5.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

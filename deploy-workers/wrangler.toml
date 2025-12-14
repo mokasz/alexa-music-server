@@ -1,0 +1,49 @@
+# Cloudflare Workers configuration for Alexa Music Server
+name = "alexa-music-workers"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Account settings (will be set after login)
+# account_id = "your-account-id"
+
+# KV Namespaces
+[[kv_namespaces]]
+binding = "MUSIC_DB"
+id = "29af5a6de5be45c188828a14d84cad6d"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "4725a7e7a1ec44219db4f4a0fe7679b5"
+
+# Environment Variables
+[vars]
+NODE_ENV = "production"
+PUBLIC_URL = "https://alexa-music-workers.YOUR_SUBDOMAIN.workers.dev"
+ALEXA_VERIFY_SIGNATURE = "false"
+
+# Secrets (set via: wrangler secret put ALEXA_SKILL_ID)
+# ALEXA_SKILL_ID = "amzn1.ask.skill.xxxxx"
+
+# Build configuration
+[build]
+command = ""
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Routes (optional - for custom domains)
+# routes = [
+#   { pattern = "alexa-music-workers.moerin.com/*", custom_domain = true }
+# ]
+
+# Usage model (paid plan required for higher limits)
+# usage_model = "bundled"  # or "unbound"
+
+# Limits (free tier)
+# - 100,000 requests/day
+# - 10ms CPU time per request
+# - 1GB KV reads/day
+# - 1,000 KV writes/day

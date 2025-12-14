@@ -1,0 +1,26 @@
+name = "alexa-music-workers"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers KV Namespaces
+# Create these using: wrangler kv:namespace create MUSIC_DB
+#                     wrangler kv:namespace create SESSIONS
+
+[[kv_namespaces]]
+binding = "MUSIC_DB"
+id = "YOUR_MUSIC_DB_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "YOUR_SESSIONS_NAMESPACE_ID"
+
+# Environment Variables
+[vars]
+NODE_ENV = "production"
+PUBLIC_URL = "https://YOUR_SUBDOMAIN.workers.dev"
+ALEXA_VERIFY_SIGNATURE = "false"
+
+# For production, set to true and add your skill ID:
+# ALEXA_VERIFY_SIGNATURE = "true"
+# ALEXA_SKILL_ID = "amzn1.ask.skill.YOUR_SKILL_ID"

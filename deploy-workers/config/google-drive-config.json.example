@@ -1,0 +1,10 @@
+{
+  "credentialsPath": "./google-drive-credentials.json",
+  "folderId": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+  "apiSettings": {
+    "version": "v3",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.readonly"
+    ]
+  }
+}
