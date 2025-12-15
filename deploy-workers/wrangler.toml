@@ -19,7 +19,7 @@ id = "4725a7e7a1ec44219db4f4a0fe7679b5"
 # Environment Variables
 [vars]
 NODE_ENV = "production"
-PUBLIC_URL = "https://alexa-music-workers.YOUR_SUBDOMAIN.workers.dev"
+PUBLIC_URL = "https://alexa-music-workers.swiftzhu.workers.dev"
 ALEXA_VERIFY_SIGNATURE = "false"
 
 # Secrets (set via: wrangler secret put ALEXA_SKILL_ID)

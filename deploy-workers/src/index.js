@@ -19,7 +19,7 @@ import { alexaHandlers, ErrorHandler } from './alexaHandlers.js';
 function buildAlexaSkill(musicDB, sessions) {
   // Initialize adapters
   const musicLibrary = new MusicLibraryKVAdapter(musicDB);
-  const playlistManager = new PlaylistManagerKVAdapter(sessions, 86400); // 24 hour TTL
+  const playlistManager = new PlaylistManagerKVAdapter(sessions, 2592000); // 30日間TTL（2592000秒）
 
   // Build skill
   const skill = Alexa.SkillBuilders.custom()
@@ -97,30 +97,77 @@ export default {
           return new Response('Track not found', { status: 404 });
         }
 
-        console.log(`Streaming: ${track.title} (${trackId})`);
-
-        // Fetch from Google Drive with Range header support
-        const driveHeaders = new Headers();
+        // 強化されたログ
         const rangeHeader = request.headers.get('range');
+        console.log(`ストリーミング中: ${track.title} (${trackId})`, {
+          range: rangeHeader || 'フルファイル',
+          fileSize: track.fileSize || '不明',
+          timestamp: new Date().toISOString()
+        });
+
+        // Google Drive fetchにタイムアウト/リトライロジック追加
+        const driveHeaders = new Headers();
         if (rangeHeader) {
           driveHeaders.set('Range', rangeHeader);
         }
 
-        const driveResponse = await fetch(track.streamUrl, {
-          headers: driveHeaders,
-          redirect: 'follow'
-        });
+        let driveResponse;
+        let retryCount = 0;
+        const maxRetries = 2;
 
-        if (!driveResponse.ok) {
-          console.error(`Google Drive fetch failed: ${driveResponse.status}`);
-          return new Response('Failed to fetch audio', { status: 502 });
+        while (retryCount <= maxRetries) {
+          try {
+            // 30秒タイムアウトを追加
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+            driveResponse = await fetch(track.streamUrl, {
+              headers: driveHeaders,
+              redirect: 'follow',
+              signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (driveResponse.ok) {
+              break; // 成功
+            }
+
+            console.warn(`Google Drive取得失敗: ${driveResponse.status}, リトライ ${retryCount + 1}/${maxRetries}`);
+            retryCount++;
+
+            if (retryCount <= maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // 指数バックオフ
+            }
+
+          } catch (error) {
+            console.error(`Google Drive取得エラー（試行 ${retryCount + 1}）:`, error.message);
+            retryCount++;
+
+            if (retryCount > maxRetries) {
+              return new Response('リトライ後もオーディオ取得失敗', { status: 502 });
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          }
+        }
+
+        if (!driveResponse || !driveResponse.ok) {
+          console.error(`Google Drive取得失敗（${maxRetries}回リトライ後）`);
+          return new Response('オーディオ取得失敗', { status: 502 });
         }
 
         // Proxy response with proper headers
         const headers = new Headers();
         headers.set('Content-Type', 'audio/mpeg');
         headers.set('Accept-Ranges', 'bytes');
-        headers.set('Cache-Control', 'public, max-age=3600');
+
+        // キャッシュヘッダーの改善: Rangeレスポンスはキャッシュしない
+        if (rangeHeader) {
+          headers.set('Cache-Control', 'no-cache');
+        } else {
+          headers.set('Cache-Control', 'public, max-age=3600');
+        }
 
         // Copy Content-Length and Content-Range from Drive response
         const contentLength = driveResponse.headers.get('content-length');
@@ -150,7 +197,12 @@ export default {
         // Parse request body
         const alexaRequest = await request.json();
 
-        console.log(`Alexa Request: ${alexaRequest.request.type}`);
+        // Log request type and intent name (if applicable)
+        if (alexaRequest.request.type === 'IntentRequest') {
+          console.log(`Alexa Request: ${alexaRequest.request.type} - ${alexaRequest.request.intent.name}`);
+        } else {
+          console.log(`Alexa Request: ${alexaRequest.request.type}`);
+        }
 
         // Build skill with KV adapters
         const { skill, musicLibrary, playlistManager } = buildAlexaSkill(
