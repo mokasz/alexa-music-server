@@ -12,6 +12,7 @@ package-lock.json
 
 # Data files
 deploy-express/data/
+data/playback-sessions.json
 *.json.bak
 
 # Logs

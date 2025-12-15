@@ -190,8 +190,18 @@ const ResumeIntentHandler = {
       && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.ResumeIntent';
   },
   handle(handlerInput) {
+    // ⭐ deviceIdを優先的に取得（AudioPlayerイベントと統一）
+    const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
     const sessionId = handlerInput.requestEnvelope.session.sessionId;
-    const currentTrackId = playlistManager.getCurrentTrack(sessionId);
+
+    // deviceId優先、なければsessionIdフォールバック
+    let currentTrackId = playlistManager.getCurrentTrack(deviceId);
+    let lookupId = deviceId;
+
+    if (!currentTrackId) {
+      currentTrackId = playlistManager.getCurrentTrack(sessionId);
+      lookupId = sessionId;
+    }
 
     if (!currentTrackId) {
       const speakOutput = '再生する曲がありません。曲名を言ってください。';
@@ -209,8 +219,124 @@ const ResumeIntentHandler = {
         .getResponse();
     }
 
+    // ⭐ 保存された位置から再開
+    const offsetInMilliseconds = playlistManager.estimatePlaybackPosition(lookupId);
+    logger.info(`Resume: ${track.title} from ${offsetInMilliseconds}ms`);
+
     return handlerInput.responseBuilder
-      .addDirective(buildAudioDirective('REPLACE_ALL', track))
+      .addDirective(buildAudioDirective('REPLACE_ALL', track, offsetInMilliseconds))
+      .getResponse();
+  }
+};
+
+// ⭐ 新規追加: FastForward Intent Handler
+const FastForwardIntentHandler = {
+  canHandle(handlerInput) {
+    return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+      && Alexa.getIntentName(handlerInput.requestEnvelope) === 'FastForwardIntent';
+  },
+  handle(handlerInput) {
+    const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
+    const sessionId = handlerInput.requestEnvelope.session.sessionId;
+    const slots = handlerInput.requestEnvelope.request.intent.slots;
+
+    // slotsから秒数を取得（デフォルト15秒）
+    let secondsToSkip = 15;
+    if (slots.seconds && slots.seconds.value) {
+      secondsToSkip = parseInt(slots.seconds.value, 10);
+    }
+
+    // deviceId優先、なければsessionIdフォールバック
+    let currentTrackId = playlistManager.getCurrentTrack(deviceId);
+    let lookupId = deviceId;
+
+    if (!currentTrackId) {
+      currentTrackId = playlistManager.getCurrentTrack(sessionId);
+      lookupId = sessionId;
+    }
+
+    if (!currentTrackId) {
+      const speakOutput = '再生中の曲がありません。';
+      return handlerInput.responseBuilder
+        .speak(speakOutput)
+        .getResponse();
+    }
+
+    const track = musicLibrary.findById(currentTrackId);
+    if (!track) {
+      const speakOutput = '曲が見つかりませんでした。';
+      return handlerInput.responseBuilder
+        .speak(speakOutput)
+        .getResponse();
+    }
+
+    // 現在位置を推定して、早送り
+    const currentPosition = playlistManager.estimatePlaybackPosition(lookupId);
+    const newPosition = currentPosition + (secondsToSkip * 1000);
+
+    logger.info(`FastForward: ${track.title} from ${currentPosition}ms to ${newPosition}ms (+${secondsToSkip}s)`);
+
+    // 新位置を保存
+    playlistManager.updatePlaybackPosition(lookupId, newPosition, 'PLAYING');
+
+    return handlerInput.responseBuilder
+      .addDirective(buildAudioDirective('REPLACE_ALL', track, newPosition))
+      .getResponse();
+  }
+};
+
+// ⭐ 新規追加: Rewind Intent Handler
+const RewindIntentHandler = {
+  canHandle(handlerInput) {
+    return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+      && Alexa.getIntentName(handlerInput.requestEnvelope) === 'RewindIntent';
+  },
+  handle(handlerInput) {
+    const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
+    const sessionId = handlerInput.requestEnvelope.session.sessionId;
+    const slots = handlerInput.requestEnvelope.request.intent.slots;
+
+    // slotsから秒数を取得（デフォルト15秒）
+    let secondsToRewind = 15;
+    if (slots.seconds && slots.seconds.value) {
+      secondsToRewind = parseInt(slots.seconds.value, 10);
+    }
+
+    // deviceId優先、なければsessionIdフォールバック
+    let currentTrackId = playlistManager.getCurrentTrack(deviceId);
+    let lookupId = deviceId;
+
+    if (!currentTrackId) {
+      currentTrackId = playlistManager.getCurrentTrack(sessionId);
+      lookupId = sessionId;
+    }
+
+    if (!currentTrackId) {
+      const speakOutput = '再生中の曲がありません。';
+      return handlerInput.responseBuilder
+        .speak(speakOutput)
+        .getResponse();
+    }
+
+    const track = musicLibrary.findById(currentTrackId);
+    if (!track) {
+      const speakOutput = '曲が見つかりませんでした。';
+      return handlerInput.responseBuilder
+        .speak(speakOutput)
+        .getResponse();
+    }
+
+    // 現在位置を推定して、巻き戻し（負の値にならないようガード）
+    const currentPosition = playlistManager.estimatePlaybackPosition(lookupId);
+    const newPosition = Math.max(0, currentPosition - (secondsToRewind * 1000));
+
+    logger.info(`Rewind: ${track.title} from ${currentPosition}ms to ${newPosition}ms (-${secondsToRewind}s)`);
+
+    // 新位置を保存
+    playlistManager.updatePlaybackPosition(lookupId, newPosition, 'PLAYING');
+
+    return handlerInput.responseBuilder
+      .addDirective(buildAudioDirective('REPLACE_ALL', track, newPosition))
       .getResponse();
   }
 };
@@ -235,13 +361,22 @@ const StopCancelIntentHandler = {
 };
 
 // AudioPlayer.PlaybackStarted Handler
+// ⭐ 拡張: 再生開始を記録（位置推定用）
 const PlaybackStartedHandler = {
   canHandle(handlerInput) {
     return Alexa.getRequestType(handlerInput.requestEnvelope) === 'AudioPlayer.PlaybackStarted';
   },
   handle(handlerInput) {
     const token = handlerInput.requestEnvelope.request.token;
-    logger.info(`Playback started: ${token}`);
+    const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
+    const offsetInMilliseconds = handlerInput.requestEnvelope.request.offsetInMilliseconds || 0;
+
+    logger.info(`Playback started: ${token} at ${offsetInMilliseconds}ms (device: ${deviceId})`);
+
+    // ⭐ 再生開始を記録（位置推定用）
+    playlistManager.recordPlaybackStart(deviceId, offsetInMilliseconds);
+    playlistManager.setCurrentToken(deviceId, token);
+    playlistManager.resetRetryCount(deviceId);
 
     return handlerInput.responseBuilder.getResponse();
   }
@@ -254,7 +389,32 @@ const PlaybackFinishedHandler = {
   },
   handle(handlerInput) {
     const token = handlerInput.requestEnvelope.request.token;
-    logger.info(`Playback finished: ${token}`);
+    const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
+
+    logger.info(`Playback finished: ${token} (device: ${deviceId})`);
+
+    // 再生完了時は位置を0にリセット
+    playlistManager.updatePlaybackPosition(deviceId, 0, 'IDLE');
+
+    return handlerInput.responseBuilder.getResponse();
+  }
+};
+
+// ⭐ 新規追加: AudioPlayer.PlaybackStopped Handler（最重要）
+// 一時停止時の位置を保存（Resume用）
+const PlaybackStoppedHandler = {
+  canHandle(handlerInput) {
+    return Alexa.getRequestType(handlerInput.requestEnvelope) === 'AudioPlayer.PlaybackStopped';
+  },
+  handle(handlerInput) {
+    const token = handlerInput.requestEnvelope.request.token;
+    const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
+    const offsetInMilliseconds = handlerInput.requestEnvelope.request.offsetInMilliseconds || 0;
+
+    logger.info(`Playback stopped: ${token} at ${offsetInMilliseconds}ms (device: ${deviceId})`);
+
+    // ⭐ 一時停止位置を保存（Resume用）
+    playlistManager.updatePlaybackPosition(deviceId, offsetInMilliseconds, 'PAUSED');
 
     return handlerInput.responseBuilder.getResponse();
   }
@@ -363,8 +523,11 @@ const skillBuilder = Alexa.SkillBuilders.custom()
     PreviousIntentHandler,
     PauseIntentHandler,
     ResumeIntentHandler,
+    FastForwardIntentHandler,      // ⭐ 新規追加
+    RewindIntentHandler,            // ⭐ 新規追加
     StopCancelIntentHandler,
     PlaybackStartedHandler,
+    PlaybackStoppedHandler,         // ⭐ 新規追加（最重要）
     PlaybackFinishedHandler,
     PlaybackNearlyFinishedHandler,
     PlaybackFailedHandler,

@@ -6,6 +6,8 @@ const cors = require('cors');
 const config = require('./config/config');
 const logger = require('./utils/logger');
 const musicLibrary = require('./services/musicLibrary');
+const playlistManager = require('./services/playlistManager');         // ⭐ 新規追加
+const positionTracker = require('./services/positionTracker');         // ⭐ 新規追加
 const { handleAlexaRequest } = require('./controllers/alexaController');
 const { streamAudio, getTrackMetadata } = require('./controllers/streamController');
 const { verifyAlexaRequest } = require('./middleware/alexaVerification');
@@ -107,6 +109,10 @@ async function startServer() {
     logger.info('Initializing music library...');
     await musicLibrary.initialize();
 
+    // ⭐ Initialize playlist manager (load sessions from storage)
+    logger.info('Initializing playlist manager...');
+    await playlistManager.initialize();
+
     // Start Express server
     const server = app.listen(config.server.port, () => {
       logger.info(`Server running on port ${config.server.port}`);
@@ -129,11 +135,17 @@ async function startServer() {
         logger.info(`   ${stats.uniqueArtists} artists, ${stats.uniqueAlbums} albums`);
       }
       logger.info('===================================');
+
+      // ⭐ Start position tracker (auto-save every 30s)
+      positionTracker.start();
+      logger.info('✅ Position tracker started (auto-save every 30s)');
+      logger.info('===================================');
     });
 
     // Graceful shutdown
     process.on('SIGTERM', () => {
       logger.info('SIGTERM received. Shutting down gracefully...');
+      positionTracker.stop();  // ⭐ 停止して最終保存
       server.close(() => {
         logger.info('Server closed');
         process.exit(0);
@@ -142,6 +154,7 @@ async function startServer() {
 
     process.on('SIGINT', () => {
       logger.info('SIGINT received. Shutting down gracefully...');
+      positionTracker.stop();  // ⭐ 停止して最終保存
       server.close(() => {
         logger.info('Server closed');
         process.exit(0);
