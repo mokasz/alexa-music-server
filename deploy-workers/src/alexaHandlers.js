@@ -259,12 +259,12 @@ export const ResumeIntentHandler = {
         .getResponse();
     }
 
-    // 保存位置を取得してレジューム（見つかったIDを使用）
-    const { offsetInMilliseconds } = await playlistManager.getPlaybackPosition(lookupId);
-    console.log(`Resuming ${track.title} from ${offsetInMilliseconds}ms (using ${lookupId === deviceId ? 'deviceId' : 'sessionId'})`);
+    // 推定位置を取得してレジューム（30秒ごとに自動更新された最新位置）
+    const estimatedPosition = await playlistManager.estimatePlaybackPosition(lookupId);
+    console.log(`Resuming ${track.title} from estimated ${estimatedPosition}ms (using ${lookupId === deviceId ? 'deviceId' : 'sessionId'})`);
 
     return handlerInput.responseBuilder
-      .addDirective(buildAudioDirective('REPLACE_ALL', track, offsetInMilliseconds))
+      .addDirective(buildAudioDirective('REPLACE_ALL', track, estimatedPosition))
       .getResponse();
   }
 };

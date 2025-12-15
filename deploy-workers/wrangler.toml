@@ -47,3 +47,15 @@ local_protocol = "http"
 # - 10ms CPU time per request
 # - 1GB KV reads/day
 # - 1,000 KV writes/day
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "SESSIONS_DO"
+class_name = "SessionDurableObject"
+script_name = "alexa-music-workers"
+
+# Migrations for Durable Objects (required for deployment)
+# Use new_sqlite_classes for free plan
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionDurableObject"]

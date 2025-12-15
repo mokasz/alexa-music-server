@@ -7,19 +7,21 @@
 
 import Alexa from 'ask-sdk-core';
 import { MusicLibraryKVAdapter } from '../adapters/musicLibraryAdapter.js';
-import { PlaylistManagerKVAdapter } from '../adapters/playlistManagerAdapter.js';
+import { PlaylistManagerDurableAdapter } from '../adapters/playlistManagerDurableAdapter.js';
 import { alexaHandlers, ErrorHandler } from './alexaHandlers.js';
+import { SessionDurableObject } from './SessionDurableObject.js';
 
 /**
- * Build Alexa Skill with KV adapters
+ * Build Alexa Skill with Durable Objects
  * @param {KVNamespace} musicDB - KV namespace for music library
- * @param {KVNamespace} sessions - KV namespace for session management
+ * @param {DurableObjectNamespace} sessionsDO - Durable Object namespace for session management
+ * @param {KVNamespace} sessionsKV - KV namespace for backup (optional)
  * @returns {Object} Alexa skill
  */
-function buildAlexaSkill(musicDB, sessions) {
+function buildAlexaSkill(musicDB, sessionsDO, sessionsKV = null) {
   // Initialize adapters
   const musicLibrary = new MusicLibraryKVAdapter(musicDB);
-  const playlistManager = new PlaylistManagerKVAdapter(sessions, 2592000); // 30日間TTL（2592000秒）
+  const playlistManager = new PlaylistManagerDurableAdapter(sessionsDO, sessionsKV);
 
   // Build skill
   const skill = Alexa.SkillBuilders.custom()
@@ -204,10 +206,11 @@ export default {
           console.log(`Alexa Request: ${alexaRequest.request.type}`);
         }
 
-        // Build skill with KV adapters
+        // Build skill with Durable Objects
         const { skill, musicLibrary, playlistManager } = buildAlexaSkill(
           env.MUSIC_DB,
-          env.SESSIONS
+          env.SESSIONS_DO,
+          env.SESSIONS // KV as backup
         );
 
         // Initialize music library (loads from KV)
@@ -263,3 +266,6 @@ export default {
     return new Response('Not Found', { status: 404 });
   }
 };
+
+// Export Durable Object class (required for Cloudflare Workers)
+export { SessionDurableObject };
