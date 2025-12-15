@@ -221,12 +221,113 @@ deploy-workers/
     └── playlistManagerAdapter.js   # KV Adapter（実装予定）
 ```
 
-## 次のステップ
+## 実装完了ステータス
 
-1. ✅ Phase 2完了: Cloudflare Workers環境セットアップ
-2. 🚧 Phase 3進行中: Google Drive統合
-3. ⏳ Phase 4: Alexa Intent Handler移植
-4. ⏳ Phase 5: デプロイとテスト
+1. ✅ Phase 1完了: Cloudflare Workers環境セットアップ
+2. ✅ Phase 2完了: Google Drive統合
+3. ✅ Phase 3完了: Alexa Intent Handler移植
+4. ✅ Phase 4完了: デプロイとテスト
+5. ✅ Phase 5完了: Durable Objects実装 - 30秒間隔の自動位置記録（2025-12-15）
+
+## 🎯 Durable Objects実装 - 自動位置記録機能
+
+### 概要
+
+再生中の位置を30秒ごとに自動保存する機能を実装しました。異常終了（ネットワーク切断、電源断など）時でも、最大30秒の誤差で再生位置を復元できます。
+
+### アーキテクチャ
+
+```
+Amazon Echo → Alexa Service → Cloudflare Workers
+                                      ↓
+                              Durable Object (SessionDurableObject)
+                                      ↓
+                              30秒ごとのAlarm → 位置記録
+                                      ↓
+                              Durable Object Storage + KV (backup)
+```
+
+### 実装ファイル
+
+**新規作成:**
+- `src/SessionDurableObject.js` - Durable Objectクラス（alarm機能付き）
+- `adapters/playlistManagerDurableAdapter.js` - Durable Objects用アダプター
+
+**変更ファイル:**
+- `wrangler.toml` - Durable Objects設定追加（`new_sqlite_classes`）
+- `src/index.js` - Durable Objectsバインディング使用
+- `src/alexaHandlers.js` - ResumeIntentで推定位置使用
+
+### 動作フロー
+
+1. **再生開始** → `PlaybackStartedHandler`
+   - `recordPlaybackStart()` で開始時刻と位置を記録
+   - 30秒後のalarmをスケジュール
+
+2. **30秒ごと** → `alarm()` メソッド
+   - 推定位置を計算: `開始位置 + 経過時間`
+   - Durable Object storageに保存
+   - KVにもバックアップ
+   - 次の30秒後にalarmを再スケジュール
+
+3. **停止・一時停止** → `PlaybackStoppedHandler`
+   - alarmをキャンセル
+   - 正確な位置を保存
+
+4. **異常終了**
+   - 最後のalarmで保存された位置（最大30秒前）から復帰可能
+
+5. **再開** → `ResumeIntentHandler`
+   - `estimatePlaybackPosition()` で最新の推定位置を取得
+   - その位置から再生を再開
+
+### テスト方法
+
+```bash
+# リアルタイムログ監視
+npm run tail
+```
+
+**期待されるログ（30秒ごと）:**
+```
+[Alarm] Scheduled for session amzn1.echo-api... in 30 seconds
+[Alarm] Triggered for session amzn1.echo-api...
+[Alarm] Updated position for amzn1.echo-api...: 45000ms
+[Alarm] Next alarm scheduled in 30 seconds
+```
+
+**Echo実機テスト:**
+
+1. **正常動作確認:**
+   ```
+   「アレクサ、モカモカを開いて」
+   「江戸時代初期を再生」
+   ```
+   → ログで30秒ごとのalarm発火を確認
+
+2. **異常終了テスト:**
+   - 再生中にEchoの電源を切る（またはWi-Fi切断）
+   - 30秒以上待つ
+   - Echoを再起動
+   - 「アレクサ、再開」
+   → 最後のalarm位置（最大30秒の誤差）から再生
+
+3. **正常一時停止テスト:**
+   - 「一時停止」
+   - 「再開」
+   → PlaybackStoppedで保存された正確な位置から再生
+
+### コスト
+
+**Durable Objects（無料プラン）:**
+- 1日あたり100万リクエスト（無料）
+- 30秒ごとのalarm: 2,880回/日（1セッション）
+- 十分に無料枠内に収まる
+
+**KV Write（バックアップ）:**
+- 30秒ごと: 2,880回/日（1セッション）
+- 無料枠: 1,000回/日
+- **注意**: 1セッションでも超過するため、複数セッション同時利用時は有料プラン検討が必要
 
 ## 参考リンク
 

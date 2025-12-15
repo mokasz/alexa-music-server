@@ -38,6 +38,51 @@
           "samples": []
         },
         {
+          "name": "FastForwardIntent",
+          "slots": [
+            {
+              "name": "seconds",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "早送り",
+            "早送りして",
+            "早送りしたい",
+            "進めて",
+            "先に進めて",
+            "スキップして",
+            "{seconds} 秒早送り",
+            "{seconds} 秒早送りして",
+            "{seconds} 秒進めて",
+            "{seconds} 秒先に進めて",
+            "{seconds} 秒スキップ",
+            "{seconds} 秒スキップして",
+            "{seconds} 秒飛ばして"
+          ]
+        },
+        {
+          "name": "RewindIntent",
+          "slots": [
+            {
+              "name": "seconds",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "巻き戻し",
+            "巻き戻して",
+            "巻き戻したい",
+            "戻して",
+            "前に戻して",
+            "{seconds} 秒巻き戻し",
+            "{seconds} 秒巻き戻して",
+            "{seconds} 秒戻して",
+            "{seconds} 秒戻る",
+            "{seconds} 秒前に戻して"
+          ]
+        },
+        {
           "name": "AMAZON.StopIntent",
           "samples": []
         },

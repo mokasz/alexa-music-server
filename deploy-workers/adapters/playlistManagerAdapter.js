@@ -10,7 +10,7 @@ export class PlaylistManagerKVAdapter {
    * @param {KVNamespace} kvNamespace - Cloudflare Workers KV namespace binding for sessions
    * @param {number} sessionTTL - Session TTL in seconds (default: 24 hours)
    */
-  constructor(kvNamespace, sessionTTL = 86400) {
+  constructor(kvNamespace, sessionTTL = 2592000) { // 30日間（2592000秒）
     this.kv = kvNamespace;
     this.sessionTTL = sessionTTL;
   }
@@ -36,7 +36,21 @@ export class PlaylistManagerKVAdapter {
       trackIds,
       currentIndex,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+
+      // 新規: 再生位置追跡
+      offsetInMilliseconds: 0,
+      playbackState: 'IDLE', // PLAYING, PAUSED, STOPPED, IDLE
+      currentToken: trackIds[currentIndex],
+      lastPlaybackTimestamp: new Date().toISOString(),
+
+      // 新規: エラーリカバリー
+      retryCount: 0,
+      lastError: null,
+
+      // 新規: 再生位置推定用（早送り/巻き戻し機能）
+      playbackStartedAt: null,  // ISO timestamp when playback started
+      playbackStartOffset: 0     // offsetInMilliseconds when playback started
     };
 
     // Store session in KV with TTL
@@ -218,6 +232,218 @@ export class PlaylistManagerKVAdapter {
    */
   getSessionTTL() {
     return this.sessionTTL;
+  }
+
+  /**
+   * Update playback position and state
+   * @param {string} sessionId - Session/Device ID
+   * @param {number} offsetInMilliseconds - Playback position in milliseconds
+   * @param {string} playbackState - Current state (PLAYING, PAUSED, STOPPED, IDLE)
+   * @returns {Promise<void>}
+   */
+  async updatePlaybackPosition(sessionId, offsetInMilliseconds, playbackState) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      console.warn(`Cannot update position: session ${sessionId} not found`);
+      return;
+    }
+
+    session.offsetInMilliseconds = offsetInMilliseconds;
+    session.playbackState = playbackState;
+    session.lastPlaybackTimestamp = new Date().toISOString();
+    session.updatedAt = new Date().toISOString();
+
+    await this._saveSession(session);
+
+    console.log(`Updated position for ${sessionId}: ${offsetInMilliseconds}ms (${playbackState})`);
+  }
+
+  /**
+   * Get playback position
+   * @param {string} sessionId - Session/Device ID
+   * @returns {Promise<Object>} { offsetInMilliseconds, playbackState }
+   */
+  async getPlaybackPosition(sessionId) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      return { offsetInMilliseconds: 0, playbackState: 'IDLE' };
+    }
+
+    return {
+      offsetInMilliseconds: session.offsetInMilliseconds || 0,
+      playbackState: session.playbackState || 'IDLE'
+    };
+  }
+
+  /**
+   * Set playback state
+   * @param {string} sessionId - Session/Device ID
+   * @param {string} state - PLAYING, PAUSED, STOPPED, IDLE
+   * @returns {Promise<void>}
+   */
+  async setPlaybackState(sessionId, state) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      console.warn(`Cannot set state: session ${sessionId} not found`);
+      return;
+    }
+
+    session.playbackState = state;
+    session.lastPlaybackTimestamp = new Date().toISOString();
+    session.updatedAt = new Date().toISOString();
+
+    await this._saveSession(session);
+  }
+
+  /**
+   * Increment retry count for failed streams
+   * @param {string} sessionId - Session/Device ID
+   * @returns {Promise<void>}
+   */
+  async incrementRetryCount(sessionId) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      return;
+    }
+
+    session.retryCount = (session.retryCount || 0) + 1;
+    session.updatedAt = new Date().toISOString();
+
+    await this._saveSession(session);
+  }
+
+  /**
+   * Reset retry count
+   * @param {string} sessionId - Session/Device ID
+   * @returns {Promise<void>}
+   */
+  async resetRetryCount(sessionId) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      return;
+    }
+
+    session.retryCount = 0;
+    session.lastError = null;
+    session.updatedAt = new Date().toISOString();
+
+    await this._saveSession(session);
+  }
+
+  /**
+   * Record error details
+   * @param {string} sessionId - Session/Device ID
+   * @param {Object} error - Error details
+   * @returns {Promise<void>}
+   */
+  async recordError(sessionId, error) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      return;
+    }
+
+    session.lastError = error;
+    session.updatedAt = new Date().toISOString();
+
+    await this._saveSession(session);
+  }
+
+  /**
+   * Check if next track exists
+   * @param {string} sessionId - Session/Device ID
+   * @returns {Promise<boolean>}
+   */
+  async hasNextTrack(sessionId) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      return false;
+    }
+
+    return (session.currentIndex + 1) < session.trackIds.length;
+  }
+
+  /**
+   * Save session to KV (internal helper)
+   * @private
+   * @param {Object} session - Session object
+   * @returns {Promise<void>}
+   */
+  async _saveSession(session) {
+    const putOptions = this.sessionTTL
+      ? { expirationTtl: this.sessionTTL }
+      : {};
+
+    await this.kv.put(
+      this._getSessionKey(session.sessionId),
+      JSON.stringify(session),
+      putOptions
+    );
+  }
+
+  /**
+   * Record playback start time and offset (for position estimation)
+   * Used for fast forward/rewind functionality
+   * @param {string} sessionId - Session/Device ID
+   * @param {number} offsetInMilliseconds - Starting offset
+   * @returns {Promise<void>}
+   */
+  async recordPlaybackStart(sessionId, offsetInMilliseconds) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      console.warn(`Cannot record playback start: session ${sessionId} not found`);
+      return;
+    }
+
+    session.playbackStartedAt = new Date().toISOString();
+    session.playbackStartOffset = offsetInMilliseconds;
+    session.updatedAt = new Date().toISOString();
+
+    await this._saveSession(session);
+
+    console.log(`Recorded playback start: ${offsetInMilliseconds}ms at ${session.playbackStartedAt} (session: ${sessionId})`);
+  }
+
+  /**
+   * Estimate current playback position based on elapsed time
+   * Used for fast forward/rewind functionality
+   * @param {string} sessionId - Session/Device ID
+   * @returns {Promise<number>} Estimated position in milliseconds
+   */
+  async estimatePlaybackPosition(sessionId) {
+    const session = await this.getSession(sessionId);
+
+    if (!session) {
+      console.warn(`Cannot estimate position: session ${sessionId} not found`);
+      return 0;
+    }
+
+    // If no playback start time recorded, use saved offset
+    if (!session.playbackStartedAt) {
+      const savedOffset = session.offsetInMilliseconds || 0;
+      console.log(`No playback start time, using saved offset: ${savedOffset}ms`);
+      return savedOffset;
+    }
+
+    // Calculate elapsed time since playback started
+    const startTime = new Date(session.playbackStartedAt).getTime();
+    const now = Date.now();
+    const elapsed = now - startTime;
+
+    // Estimate position: startOffset + elapsed time
+    const estimatedPosition = session.playbackStartOffset + elapsed;
+
+    console.log(`Estimated position: ${estimatedPosition}ms (start: ${session.playbackStartOffset}ms, elapsed: ${elapsed}ms)`);
+
+    // Ensure non-negative
+    return Math.max(0, estimatedPosition);
   }
 }
 
