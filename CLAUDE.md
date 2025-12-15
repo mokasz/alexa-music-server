@@ -52,6 +52,19 @@ tail -f logs/app.log
 pm2 logs alexa-music-server
 ```
 
+### GitHub Integration
+
+**Creating Pull Requests:**
+This project uses `GITHUB_PERSONAL_TOKEN` environment variable for GitHub API authentication.
+
+```bash
+# Create PR using GitHub API (automatic via curl)
+# The token is stored in $GITHUB_PERSONAL_TOKEN environment variable
+# PRs are created automatically when committing feature branches
+```
+
+**Important:** When Claude Code creates commits and PRs, it uses the `GITHUB_PERSONAL_TOKEN` environment variable for authentication. This token should be set in your environment before starting Claude Code sessions.
+
 ## Core Architecture
 
 ### Request Flow
