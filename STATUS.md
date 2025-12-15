@@ -1,6 +1,6 @@
 # プロジェクトステータス
 
-**最終更新**: 2025-12-13
+**最終更新**: 2025-12-15
 
 ## 🎉 プロジェクト完了！
 
@@ -45,6 +45,24 @@
 - ✅ 音楽検索API: 正常
 - ✅ Developer Consoleシミュレーター: 正常動作
 - ✅ Amazon Echo実機: **正常動作！**
+
+### 5. Cloudflare Workers デプロイ（2025-12-15）
+- ✅ Workers デプロイ完了
+- ✅ URL: `https://alexa-music-workers.swiftzhu.workers.dev`
+- ✅ KV Namespace設定（MUSIC_DB, SESSIONS）
+- ✅ 音楽ライブラリ同期（3曲）
+- ✅ Google Drive ストリーミング統合
+- ✅ セッションTTL 30日間
+- ✅ Interaction Model更新（早送り/巻き戻しIntent追加）
+
+### 6. 新機能追加（2025-12-15）
+- ✅ **FastForwardIntent** - 早送り機能（「10秒早送り」など）
+- ✅ **RewindIntent** - 巻き戻し機能（「10秒巻き戻し」など）
+- ✅ **再生位置記憶** - 一時停止→再開時の位置保存
+- ✅ **AudioPlayerライフサイクル** - 完全なイベントハンドリング
+- ✅ **自動リトライ** - ストリーミング失敗時の自動再試行（最大2回）
+- ✅ **エラーリカバリー** - PlaybackFailed時の次曲自動スキップ
+- ✅ **deviceId対応** - AudioPlayerイベントとの統一
 
 ---
 
@@ -137,7 +155,9 @@ if (!requestBody || !requestBody.version || (!requestBody.session && !requestBod
 
 ## 💻 現在の環境
 
-### サーバー情報
+### デプロイメント構成（並行稼働中）
+
+#### 1️⃣ Express + Cloudflare Tunnel（現行システム）
 
 **Node.jsサーバー:**
 ```bash
@@ -148,6 +168,32 @@ npm start
 **Cloudflare Tunnel:**
 ```bash
 cloudflared tunnel run alexa-music-tunnel
+```
+
+**エンドポイント:** `https://alexa-music.moerin.com/alexa`
+**ステータス:** ✅ 稼働中（Alexaスキルの現在のエンドポイント）
+
+#### 2️⃣ Cloudflare Workers（新システム）
+
+**デプロイ:**
+```bash
+cd /Users/shiwei.zhu/Claude/alexa-music-server/deploy-workers
+npm run deploy
+```
+
+**エンドポイント:** `https://alexa-music-workers.swiftzhu.workers.dev/alexa`
+**ステータス:** ✅ 稼働中（グローバルCDN、サーバー不要）
+
+**KV管理:**
+```bash
+# 音楽ライブラリ同期
+npm run sync-music
+
+# KV確認
+npx wrangler kv:key list --namespace-id=29af5a6de5be45c188828a14d84cad6d
+
+# ログ監視
+npm run tail
 ```
 
 ### 環境変数（.env）
@@ -181,6 +227,7 @@ curl https://alexa-music.moerin.com/library/info
 
 ### Echo実機での使用
 
+**基本操作:**
 ```
 「アレクサ、モカモカを開いて」
 「再生して 江戸時代初期」
@@ -189,6 +236,16 @@ curl https://alexa-music.moerin.com/library/info
 「一時停止」
 「再開」
 「停止」
+```
+
+**新機能（2025-12-15追加）:**
+```
+「10秒早送り」
+「30秒早送りして」
+「早送り」（デフォルト15秒）
+「10秒巻き戻し」
+「15秒戻して」
+「巻き戻し」（デフォルト15秒）
 ```
 
 ### Developer Consoleシミュレーター
@@ -236,7 +293,30 @@ curl https://alexa-music.moerin.com/library/info
 
 ---
 
+## 🚀 次のステップ
+
+### テストとモニタリング
+1. **Interaction Model Build完了を待つ**（2-3分）
+2. **新機能テスト**（シミュレーター/実機）:
+   - 「10秒早送り」
+   - 「一時停止」→「再開」（再生位置記憶）
+3. **Workers安定稼働確認**（数日～1週間）
+4. **パフォーマンス監視**:
+   - Cloudflare Workers Analytics
+   - KV使用量確認
+
+### 完全移行（オプション）
+Workersが安定稼働を確認後、以下を検討:
+1. Alexaスキルエンドポイント変更:
+   - `https://alexa-music.moerin.com/alexa`
+   - → `https://alexa-music-workers.swiftzhu.workers.dev/alexa`
+2. Expressサーバー・Tunnel停止
+3. 完全クラウド化達成
+
+---
+
 **作成日**: 2025-12-12
-**完了日**: 2025-12-13
+**Phase 1完了**: 2025-12-13（Express + Tunnel）
+**Phase 2完了**: 2025-12-15（Cloudflare Workers + 機能強化）
 **プロジェクト**: Alexa Music Server
-**ステータス**: ✅ 完全動作
+**ステータス**: ✅ 完全動作（並行稼働中）
