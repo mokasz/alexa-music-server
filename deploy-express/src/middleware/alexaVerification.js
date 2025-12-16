@@ -1,66 +1,112 @@
+const alexaVerifier = require('alexa-verifier');
 const config = require('../config/config');
 const logger = require('../utils/logger');
 
 /**
- * Verify Alexa request (basic verification)
- * For production, use ask-sdk-express-adapter for full signature verification
+ * Alexa Request Signature Verification Middleware
+ * Implements Amazon's required cryptographic validation
+ *
+ * Amazon Documentation:
+ * https://developer.amazon.com/docs/custom-skills/host-a-custom-skill-as-a-web-service.html
  */
 function verifyAlexaRequest(req, res, next) {
-  // Skip verification in development mode
-  if (!config.alexa.verifySignature) {
+  // Development mode exception (only if explicitly disabled)
+  if (!config.alexa.verifySignature && config.server.env !== 'production') {
+    logger.warn('⚠️  Alexa signature verification is DISABLED - development mode only');
     return next();
   }
 
-  try {
-    const requestBody = req.body;
+  // Production: Always verify
+  const certUrl = req.headers['signaturecertchainurl'];
+  const signature = req.headers['signature'];
+  const requestBody = JSON.stringify(req.body);
 
-    // Log request type for debugging
-    const requestType = requestBody?.request?.type;
-    logger.info(`Alexa request type: ${requestType}`);
+  // Check required headers
+  if (!certUrl || !signature) {
+    logger.warn('❌ Missing Alexa signature headers', {
+      hasCertUrl: !!certUrl,
+      hasSignature: !!signature,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+    return res.status(400).json({
+      error: 'Missing signature headers',
+      message: 'This endpoint requires Alexa authentication'
+    });
+  }
 
-    // Check if request has required Alexa structure
-    // Note: AudioPlayer events don't have session, only request and context
-    if (!requestBody || !requestBody.version || (!requestBody.session && !requestBody.context)) {
-      logger.warn('Invalid Alexa request structure', {
-        hasBody: !!requestBody,
-        hasVersion: !!requestBody?.version,
-        hasSession: !!requestBody?.session,
-        hasContext: !!requestBody?.context
+  // Cryptographic signature verification using alexa-verifier library
+  // This library:
+  // 1. Validates SignatureCertChainUrl format
+  // 2. Downloads and caches the certificate
+  // 3. Verifies certificate chain validity
+  // 4. Checks echo-api.amazon.com in Subject Alternative Names
+  // 5. Decrypts signature and compares with request hash
+  alexaVerifier(certUrl, signature, requestBody, (error) => {
+    if (error) {
+      logger.error('❌ Alexa signature verification failed', {
+        error: error.message,
+        certUrl: certUrl,
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
       });
-      return res.status(400).json({ error: 'Invalid request' });
+      return res.status(401).json({
+        error: 'Invalid request signature',
+        message: 'Authentication failed'
+      });
     }
 
-    // Verify application ID if configured
-    if (config.alexa.skillId) {
-      const applicationId = requestBody.session?.application?.applicationId ||
-                           requestBody.context?.System?.application?.applicationId;
+    // Additional validation: Timestamp
+    const alexaRequest = req.body;
+    const timestamp = alexaRequest.request?.timestamp;
 
-      if (applicationId !== config.alexa.skillId) {
-        logger.warn(`Skill ID mismatch: expected ${config.alexa.skillId}, got ${applicationId}`);
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-    }
-
-    // Check timestamp to prevent replay attacks (requests older than 150 seconds)
-    const timestamp = requestBody.request?.timestamp;
     if (timestamp) {
       const requestTime = new Date(timestamp).getTime();
       const now = Date.now();
       const timeDifference = Math.abs(now - requestTime);
 
-      if (timeDifference > 150000) { // 150 seconds
-        logger.warn(`Request timestamp too old: ${timeDifference}ms`);
-        return res.status(400).json({ error: 'Request timestamp too old' });
+      // Amazon requires 150-second tolerance for clock skew and network latency
+      if (timeDifference > 150000) {
+        logger.warn('⚠️  Request timestamp too old', {
+          timeDifference: `${timeDifference}ms`,
+          timestamp: timestamp,
+          ip: req.ip
+        });
+        return res.status(400).json({
+          error: 'Request timestamp too old',
+          message: 'Request has expired'
+        });
       }
     }
 
+    // Additional validation: Skill ID
+    if (config.alexa.skillId) {
+      const applicationId = alexaRequest.session?.application?.applicationId ||
+                           alexaRequest.context?.System?.application?.applicationId;
+
+      if (applicationId !== config.alexa.skillId) {
+        logger.warn('⚠️  Skill ID mismatch', {
+          expected: config.alexa.skillId,
+          received: applicationId,
+          ip: req.ip
+        });
+        return res.status(403).json({
+          error: 'Unauthorized skill',
+          message: 'This request is for a different skill'
+        });
+      }
+    }
+
+    // All validations passed
+    logger.info('✅ Alexa request verified successfully', {
+      requestType: alexaRequest.request?.type,
+      intentName: alexaRequest.request?.intent?.name,
+      sessionId: alexaRequest.session?.sessionId,
+      applicationId: alexaRequest.session?.application?.applicationId
+    });
+
     next();
-  } catch (error) {
-    logger.error('Alexa verification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  });
 }
 
-module.exports = {
-  verifyAlexaRequest
-};
+module.exports = { verifyAlexaRequest };
