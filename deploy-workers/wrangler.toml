@@ -24,7 +24,7 @@ id = "1b8cac75de4f4033af494f4ca71af817"
 [vars]
 NODE_ENV = "production"
 PUBLIC_URL = "https://alexa-music-workers.swiftzhu.workers.dev"
-ALEXA_VERIFY_SIGNATURE = "true"
+ALEXA_VERIFY_SIGNATURE = "false"  # Temporarily disabled due to KV limit
 
 # Secrets (set via: wrangler secret put ALEXA_SKILL_ID)
 # ALEXA_SKILL_ID = "amzn1.ask.skill.xxxxx"
