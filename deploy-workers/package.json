@@ -16,14 +16,15 @@
     "kv:put": "wrangler kv:key put"
   },
   "dependencies": {
+    "@alexa-music/core": "file:../core",
+    "@peculiar/x509": "^1.14.2",
     "ask-sdk-core": "^2.14.0",
-    "ask-sdk-model": "^1.41.1",
-    "@alexa-music/core": "file:../core"
+    "ask-sdk-model": "^1.41.1"
   },
   "devDependencies": {
-    "wrangler": "^3.80.0",
     "@cloudflare/workers-types": "^4.20241127.0",
-    "googleapis": "^140.0.0"
+    "googleapis": "^140.0.0",
+    "wrangler": "^3.80.0"
   },
   "engines": {
     "node": ">=18.0.0"

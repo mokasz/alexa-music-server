@@ -6,6 +6,7 @@
  */
 
 import Alexa from 'ask-sdk-core';
+import { generateStreamToken } from './utils/streamTokens.js';
 
 /**
  * Build Audio Player directive for streaming
@@ -13,11 +14,24 @@ import Alexa from 'ask-sdk-core';
  * @param {Object} track - Track object with ID
  * @param {number} offsetInMilliseconds - Starting offset
  * @param {string} publicUrl - Worker public URL
- * @returns {Object} AudioPlayer directive
+ * @param {string} jwtSecret - JWT secret for token generation
+ * @param {string} skillId - Alexa skill ID
+ * @returns {Promise<Object>} AudioPlayer directive
  */
-function buildAudioDirective(playBehavior, track, offsetInMilliseconds = 0, publicUrl = 'https://alexa-music-workers.swiftzhu.workers.dev') {
-  // Use Worker's stream endpoint instead of direct Google Drive URL
-  const streamUrl = `${publicUrl}/stream/${track.id}`;
+async function buildAudioDirective(playBehavior, track, offsetInMilliseconds = 0, publicUrl = 'https://alexa-music-workers.swiftzhu.workers.dev', jwtSecret = null, skillId = null) {
+  // Generate JWT token for stream authentication
+  let streamUrl = `${publicUrl}/stream/${track.id}`;
+
+  if (jwtSecret && skillId) {
+    try {
+      const token = await generateStreamToken(track.id, skillId, jwtSecret, 3600); // 1 hour expiry
+      streamUrl = `${streamUrl}?token=${token}`;
+      console.log(`✅ Stream token generated for track: ${track.id}`);
+    } catch (error) {
+      console.error('❌ Failed to generate stream token:', error);
+      // Continue without token - let the stream endpoint handle authentication failure
+    }
+  }
 
   return {
     type: 'AudioPlayer.Play',
@@ -71,7 +85,7 @@ export const PlayMusicIntentHandler = {
       && Alexa.getIntentName(handlerInput.requestEnvelope) === 'PlayMusicIntent';
   },
   async handle(handlerInput) {
-    const { musicLibrary, playlistManager } = handlerInput.requestEnvelope.context.env;
+    const { musicLibrary, playlistManager, jwtSecret, skillId, publicUrl } = handlerInput.requestEnvelope.context.env;
     const sessionId = handlerInput.requestEnvelope.session.sessionId;
     const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
     const slots = handlerInput.requestEnvelope.request.intent.slots;
@@ -116,9 +130,12 @@ export const PlayMusicIntentHandler = {
 
     const speakOutput = `${track.title}を再生します。`;
 
+    // Build audio directive with JWT token
+    const directive = await buildAudioDirective('REPLACE_ALL', track, 0, publicUrl, jwtSecret, skillId);
+
     return handlerInput.responseBuilder
       .speak(speakOutput)
-      .addDirective(buildAudioDirective('REPLACE_ALL', track))
+      .addDirective(directive)
       .getResponse();
   }
 };

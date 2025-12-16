@@ -16,11 +16,15 @@ id = "29af5a6de5be45c188828a14d84cad6d"
 binding = "SESSIONS"
 id = "4725a7e7a1ec44219db4f4a0fe7679b5"
 
+[[kv_namespaces]]
+binding = "CERT_CACHE"
+id = "1b8cac75de4f4033af494f4ca71af817"
+
 # Environment Variables
 [vars]
 NODE_ENV = "production"
 PUBLIC_URL = "https://alexa-music-workers.swiftzhu.workers.dev"
-ALEXA_VERIFY_SIGNATURE = "false"
+ALEXA_VERIFY_SIGNATURE = "true"
 
 # Secrets (set via: wrangler secret put ALEXA_SKILL_ID)
 # ALEXA_SKILL_ID = "amzn1.ask.skill.xxxxx"
