@@ -24,23 +24,31 @@ export class AlexaVerifier {
     const certUrl = request.headers.get('SignatureCertChainUrl');
     // Support both SHA-256 (recommended) and SHA-1 (legacy) signatures
     const signature = request.headers.get('Signature-256') || request.headers.get('Signature');
+    const signatureType = request.headers.get('Signature-256') ? 'SHA-256' : 'SHA-1';
+
+    console.log(`🔐 Verifying with ${signatureType}`);
 
     if (!certUrl || !signature) {
       throw new Error('Missing signature headers');
     }
 
     // Step 1: Validate certificate URL format
+    console.log('Step 1: Validating certificate URL');
     if (!this.isValidCertUrl(certUrl)) {
       throw new Error('Invalid certificate URL format');
     }
 
     // Step 2: Download certificate (with caching)
+    console.log('Step 2: Getting certificate');
     const certPem = await this.getCertificate(certUrl);
 
     // Step 3: Extract public key
+    console.log('Step 3: Extracting public key');
     const publicKey = await this.extractPublicKey(certPem);
+    console.log('✅ Public key extracted successfully');
 
     // Step 4: Verify signature
+    console.log('Step 4: Verifying signature');
     const isValid = await this.verifySignature(
       publicKey,
       signature,
@@ -48,18 +56,26 @@ export class AlexaVerifier {
     );
 
     if (!isValid) {
+      console.error('❌ Signature verification returned false');
       throw new Error('Invalid signature');
     }
 
+    console.log('✅ Signature verified');
+
     // Step 5: Verify timestamp
+    console.log('Step 5: Verifying timestamp');
     const alexaRequest = JSON.parse(requestBody);
     this.verifyTimestamp(alexaRequest);
+    console.log('✅ Timestamp valid');
 
     // Step 6: Verify skill ID
     if (skillId) {
+      console.log('Step 6: Verifying skill ID');
       this.verifySkillId(alexaRequest, skillId);
+      console.log('✅ Skill ID valid');
     }
 
+    console.log('✅ All verification steps passed');
     return true;
   }
 
@@ -206,28 +222,34 @@ export class AlexaVerifier {
     // Skip version [0] (optional, usually present)
     if (certDer[offset] === 0xa0) {
       offset++;
-      offset += readLength();
+      const versionLength = readLength();
+      offset += versionLength;
     }
 
     // Skip serialNumber (INTEGER)
     if (certDer[offset++] !== 0x02) throw new Error('Invalid serialNumber');
-    offset += readLength();
+    const serialNumberLength = readLength();
+    offset += serialNumberLength;
 
     // Skip signature AlgorithmIdentifier (SEQUENCE)
     if (certDer[offset++] !== 0x30) throw new Error('Invalid signature AlgorithmIdentifier');
-    offset += readLength();
+    const sigAlgLength = readLength();
+    offset += sigAlgLength;
 
     // Skip issuer (SEQUENCE)
     if (certDer[offset++] !== 0x30) throw new Error('Invalid issuer');
-    offset += readLength();
+    const issuerLength = readLength();
+    offset += issuerLength;
 
     // Skip validity (SEQUENCE)
     if (certDer[offset++] !== 0x30) throw new Error('Invalid validity');
-    offset += readLength();
+    const validityLength = readLength();
+    offset += validityLength;
 
     // Skip subject (SEQUENCE)
     if (certDer[offset++] !== 0x30) throw new Error('Invalid subject');
-    offset += readLength();
+    const subjectLength = readLength();
+    offset += subjectLength;
 
     // Now we're at SubjectPublicKeyInfo (SEQUENCE)
     if (certDer[offset] !== 0x30) throw new Error('Invalid SPKI structure');
