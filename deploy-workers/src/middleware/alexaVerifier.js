@@ -26,7 +26,7 @@ export class AlexaVerifier {
     const signature = request.headers.get('Signature-256') || request.headers.get('Signature');
     const signatureType = request.headers.get('Signature-256') ? 'SHA-256' : 'SHA-1';
 
-    console.log(`🔐 Using ${signatureType} signature verification`);
+    // HIGH-002: Removed verbose logging (signatureType not logged in production)
 
     if (!certUrl || !signature) {
       throw new Error('Missing signature headers');

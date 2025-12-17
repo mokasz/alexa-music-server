@@ -24,10 +24,14 @@ id = "1b8cac75de4f4033af494f4ca71af817"
 [vars]
 NODE_ENV = "production"
 PUBLIC_URL = "https://alexa-music-workers.swiftzhu.workers.dev"
-ALEXA_VERIFY_SIGNATURE = "true"  # Temporarily disabled due to KV limit
+ALEXA_VERIFY_SIGNATURE = "true"  # HIGH-001: Rate limiting now uses in-memory cache (no KV writes)
 
-# Secrets (set via: wrangler secret put ALEXA_SKILL_ID)
-# ALEXA_SKILL_ID = "amzn1.ask.skill.xxxxx"
+# Secrets (CRITICAL-001: Must be set via wrangler secret, NOT environment variables)
+# Generate secure secret: openssl rand -base64 32
+# Set secrets:
+#   wrangler secret put JWT_SECRET       # Must be at least 32 characters
+#   wrangler secret put ALEXA_SKILL_ID   # amzn1.ask.skill.xxxxx
+# Rotate JWT_SECRET every 90 days for security
 
 # Build configuration
 [build]

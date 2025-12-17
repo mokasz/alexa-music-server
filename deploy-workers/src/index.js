@@ -64,6 +64,18 @@ function handleCORS(request) {
  */
 export default {
   async fetch(request, env, ctx) {
+    // CRITICAL-001: Validate JWT_SECRET at startup
+    if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) {
+      console.error('❌ CRITICAL: JWT_SECRET must be at least 32 characters');
+      return new Response('Service configuration error', {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain' }
+      });
+    }
+
+    // HIGH-002: Control verbose logging based on environment
+    const DEBUG = env.NODE_ENV !== 'production';
+
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -150,7 +162,10 @@ export default {
           return addSecurityHeaders(response, request);
         }
 
-        console.log('✅ Stream token validated', { trackId });
+        // HIGH-002: Only log in debug mode
+        if (DEBUG) {
+          console.log('✅ Stream token validated', { trackId });
+        }
         // Get music library
         const libraryData = await env.MUSIC_DB.get('music-library', 'json');
         if (!libraryData || !libraryData.tracks) {
@@ -171,13 +186,15 @@ export default {
           return addSecurityHeaders(response, request);
         }
 
-        // 強化されたログ
+        // HIGH-002: Only log detailed streaming info in debug mode
         const rangeHeader = request.headers.get('range');
-        console.log(`ストリーミング中: ${track.title} (${trackId})`, {
-          range: rangeHeader || 'フルファイル',
-          fileSize: track.fileSize || '不明',
-          timestamp: new Date().toISOString()
-        });
+        if (DEBUG) {
+          console.log(`ストリーミング中: ${track.title} (${trackId})`, {
+            range: rangeHeader || 'フルファイル',
+            fileSize: track.fileSize || '不明',
+            timestamp: new Date().toISOString()
+          });
+        }
 
         // Google Drive fetchにタイムアウト/リトライロジック追加
         const driveHeaders = new Headers();
@@ -281,6 +298,21 @@ export default {
     // Alexa skill endpoint
     if (path === '/alexa' && request.method === 'POST') {
       try {
+        // HIGH-003: Request size limit validation
+        const MAX_REQUEST_SIZE = 10 * 1024; // 10 KB (Alexa requests typically <5 KB)
+        const contentLength = parseInt(request.headers.get('content-length') || '0');
+
+        if (contentLength > MAX_REQUEST_SIZE) {
+          console.warn('⚠️  Request too large', {
+            size: contentLength,
+            ip: request.headers.get('CF-Connecting-IP')
+          });
+          return new Response('Request too large', {
+            status: 413,
+            headers: { 'Content-Type': 'text/plain' }
+          });
+        }
+
         // Rate limiting
         const rateLimitResult = await rateLimitCheck(request, env.CERT_CACHE, {
           limit: 60, // 60 requests per minute
@@ -305,6 +337,18 @@ export default {
         // Get request body as text first (needed for signature verification)
         const requestBody = await request.text();
 
+        // HIGH-003: Validate actual body size
+        if (requestBody.length > MAX_REQUEST_SIZE) {
+          console.warn('⚠️  Request body too large', {
+            size: requestBody.length,
+            ip: request.headers.get('CF-Connecting-IP')
+          });
+          return new Response('Request too large', {
+            status: 413,
+            headers: { 'Content-Type': 'text/plain' }
+          });
+        }
+
         // Verify Alexa signature
         const verifySignature = env.ALEXA_VERIFY_SIGNATURE === 'true';
         if (verifySignature) {
@@ -318,6 +362,7 @@ export default {
             );
           } catch (error) {
             console.error('❌ Alexa signature verification failed:', error.message);
+            // CRITICAL-002: No CORS headers for /alexa (server-to-server)
             const response = new Response(
               JSON.stringify({
                 version: '1.0',
@@ -332,8 +377,7 @@ export default {
               {
                 status: 401,
                 headers: {
-                  'Content-Type': 'application/json',
-                  'Access-Control-Allow-Origin': '*'
+                  'Content-Type': 'application/json'
                 }
               }
             );
@@ -344,11 +388,13 @@ export default {
         // Parse request body
         const alexaRequest = JSON.parse(requestBody);
 
-        // Log request type and intent name (if applicable)
-        if (alexaRequest.request.type === 'IntentRequest') {
-          console.log(`Alexa Request: ${alexaRequest.request.type} - ${alexaRequest.request.intent.name}`);
-        } else {
-          console.log(`Alexa Request: ${alexaRequest.request.type}`);
+        // HIGH-002: Only log request details in debug mode
+        if (DEBUG) {
+          if (alexaRequest.request.type === 'IntentRequest') {
+            console.log(`Alexa Request: ${alexaRequest.request.type} - ${alexaRequest.request.intent.name}`);
+          } else {
+            console.log(`Alexa Request: ${alexaRequest.request.type}`);
+          }
         }
 
         // Build skill with Durable Objects
@@ -374,14 +420,16 @@ export default {
         // Invoke Alexa skill
         const alexaResponse = await skill.invoke(alexaRequest);
 
-        console.log(`Alexa Response: ${JSON.stringify(alexaResponse)}`);
+        // HIGH-002: Only log response details in debug mode
+        if (DEBUG) {
+          console.log(`Alexa Response: ${JSON.stringify(alexaResponse)}`);
+        }
 
-        // Return response
+        // CRITICAL-002: No CORS headers for /alexa (server-to-server)
         const response = new Response(JSON.stringify(alexaResponse), {
           status: 200,
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': 'application/json'
           }
         });
         return addSecurityHeaders(response, request);
