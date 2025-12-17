@@ -74,8 +74,7 @@ export default {
     }
 
     // HIGH-002: Control verbose logging based on environment
-    // TEMPORARY: Force DEBUG mode to diagnose recurring 401 error
-    const DEBUG = true; // env.NODE_ENV !== 'production';
+    const DEBUG = env.NODE_ENV !== 'production';
 
     const url = new URL(request.url);
     const path = url.pathname;
