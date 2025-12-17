@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@alexa-music/core": "file:../core",
-    "@peculiar/x509": "^1.14.2",
     "ask-sdk-core": "^2.14.0",
     "ask-sdk-model": "^1.41.1"
   },

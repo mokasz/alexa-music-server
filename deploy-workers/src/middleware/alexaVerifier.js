@@ -141,32 +141,36 @@ export class AlexaVerifier {
   }
 
   /**
-   * Extract public key from PEM certificate using @peculiar/x509
+   * Extract public key from PEM certificate
+   * Uses a simple approach: extract SPKI from DER-encoded certificate
    */
   async extractPublicKey(certPem) {
     try {
-      // Import X509Certificate from @peculiar/x509
-      const { X509Certificate } = await import('@peculiar/x509');
+      // Extract only valid base64 characters
+      // Remove ALL characters that are not valid base64 (A-Z, a-z, 0-9, +, /, =)
+      const pemContents = certPem
+        .replace(/-----BEGIN CERTIFICATE-----/g, '')
+        .replace(/-----END CERTIFICATE-----/g, '')
+        .replace(/[^A-Za-z0-9+/=]/g, '');  // Remove all non-base64 characters
 
-      // Parse the certificate
-      const cert = new X509Certificate(certPem);
+      // Use manual base64 decode instead of atob() to avoid Workers issues
+      const certDer = this.base64Decode(pemContents);
 
-      // Export the public key as ArrayBuffer
-      const publicKeyArrayBuffer = await cert.publicKey.export('spki');
+      // Parse DER to extract SubjectPublicKeyInfo (SPKI)
+      const spki = this.extractSPKIFromDER(certDer);
 
-      // Import it as a CryptoKey for verification
+      // Import the public key using Web Crypto API
       const publicKey = await crypto.subtle.importKey(
         'spki',
-        publicKeyArrayBuffer,
+        spki,
         {
           name: 'RSASSA-PKCS1-v1_5',
-          hash: 'SHA-256' // Amazon recommends SHA-256 (Signature-256 header)
+          hash: 'SHA-256'
         },
         false,
         ['verify']
       );
 
-      console.log('✅ Public key extracted with SHA-256');
       return publicKey;
     } catch (error) {
       console.error('❌ Failed to extract public key', error);
@@ -175,12 +179,79 @@ export class AlexaVerifier {
   }
 
   /**
+   * Extract SubjectPublicKeyInfo from DER-encoded X.509 certificate
+   * This is a simplified ASN.1 parser for extracting SPKI
+   */
+  extractSPKIFromDER(certDer) {
+    let offset = 0;
+
+    // Helper to read ASN.1 length
+    const readLength = () => {
+      let length = certDer[offset++];
+      if (length & 0x80) {
+        const numBytes = length & 0x7f;
+        length = 0;
+        for (let i = 0; i < numBytes; i++) {
+          length = (length << 8) | certDer[offset++];
+        }
+      }
+      return length;
+    };
+
+    // Skip outer SEQUENCE (Certificate)
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid certificate structure');
+    readLength();
+
+    // Skip TBSCertificate SEQUENCE header
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid TBSCertificate structure');
+    readLength();
+
+    // Skip version [0] (optional, usually present)
+    if (certDer[offset] === 0xa0) {
+      offset++;
+      const versionLength = readLength();
+      offset += versionLength;
+    }
+
+    // Skip serialNumber (INTEGER)
+    if (certDer[offset++] !== 0x02) throw new Error('Invalid serialNumber');
+    offset += readLength();
+
+    // Skip signature (SEQUENCE)
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid signature');
+    offset += readLength();
+
+    // Skip issuer (SEQUENCE)
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid issuer');
+    offset += readLength();
+
+    // Skip validity (SEQUENCE)
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid validity');
+    offset += readLength();
+
+    // Skip subject (SEQUENCE)
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid subject');
+    offset += readLength();
+
+    // Now we're at SubjectPublicKeyInfo (SEQUENCE)
+    if (certDer[offset] !== 0x30) throw new Error('Invalid SPKI structure');
+    const spkiStart = offset;
+    offset++;
+    const spkiLength = readLength();
+    const spkiEnd = offset + spkiLength;
+
+    // Extract SPKI (including the SEQUENCE header)
+    return certDer.slice(spkiStart, spkiEnd);
+  }
+
+  /**
    * Verify RSA-SHA256 signature
    */
   async verifySignature(publicKey, signatureBase64, requestBody) {
     try {
-      // Decode signature from base64
-      const signatureBuffer = this.base64ToArrayBuffer(signatureBase64);
+      // Decode signature from base64 using manual decoder
+      const signatureBytes = this.base64Decode(signatureBase64);
+      const signatureBuffer = signatureBytes.buffer;
 
       // Convert request body to ArrayBuffer
       const encoder = new TextEncoder();
@@ -237,7 +308,50 @@ export class AlexaVerifier {
   }
 
   /**
-   * Base64 to ArrayBuffer conversion
+   * Manual base64 decode (for certificate parsing)
+   * More reliable than atob() in Cloudflare Workers
+   */
+  base64Decode(base64String) {
+    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const lookup = new Uint8Array(256);
+    for (let i = 0; i < base64Chars.length; i++) {
+      lookup[base64Chars.charCodeAt(i)] = i;
+    }
+
+    const len = base64String.length;
+    let bufferLength = (len * 3) / 4;
+
+    // Handle padding
+    if (base64String[len - 1] === '=') {
+      bufferLength--;
+      if (base64String[len - 2] === '=') {
+        bufferLength--;
+      }
+    }
+
+    const bytes = new Uint8Array(bufferLength);
+    let p = 0;
+
+    for (let i = 0; i < len; i += 4) {
+      const encoded1 = lookup[base64String.charCodeAt(i)];
+      const encoded2 = lookup[base64String.charCodeAt(i + 1)];
+      const encoded3 = lookup[base64String.charCodeAt(i + 2)];
+      const encoded4 = lookup[base64String.charCodeAt(i + 3)];
+
+      bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+      if (i + 2 < len && base64String[i + 2] !== '=') {
+        bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+      }
+      if (i + 3 < len && base64String[i + 3] !== '=') {
+        bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+      }
+    }
+
+    return bytes;
+  }
+
+  /**
+   * Base64 to ArrayBuffer conversion (for signature verification)
    */
   base64ToArrayBuffer(base64) {
     const binaryString = atob(base64);
