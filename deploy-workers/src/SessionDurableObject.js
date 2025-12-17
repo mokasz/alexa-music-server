@@ -187,14 +187,8 @@ export class SessionDurableObject {
       // Save to Durable Object storage
       await this.state.storage.put('session', this.session);
 
-      // Also backup to KV (fallback if Durable Object is purged)
-      if (this.env.SESSIONS) {
-        await this.env.SESSIONS.put(
-          `session:${this.session.sessionId}`,
-          JSON.stringify(this.session),
-          { expirationTtl: 2592000 } // 30 days
-        );
-      }
+      // Note: KV backup removed to avoid exceeding free tier write limits
+      // Durable Objects already provide persistent storage
 
       console.log(`[Alarm] Updated position for ${this.session.sessionId}: ${estimatedPosition}ms`);
 
@@ -265,14 +259,8 @@ export class SessionDurableObject {
     // Save to storage
     await this.state.storage.put('session', this.session);
 
-    // Backup to KV
-    if (this.env.SESSIONS) {
-      await this.env.SESSIONS.put(
-        `session:${this.session.sessionId}`,
-        JSON.stringify(this.session),
-        { expirationTtl: 2592000 }
-      );
-    }
+    // Note: KV backup removed to avoid exceeding free tier write limits
+    // Durable Objects already provide persistent storage
 
     // Cancel alarm if not PLAYING
     if (playbackState !== 'PLAYING') {
