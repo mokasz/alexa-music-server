@@ -24,9 +24,6 @@ export class AlexaVerifier {
     const certUrl = request.headers.get('SignatureCertChainUrl');
     // Support both SHA-256 (recommended) and SHA-1 (legacy) signatures
     const signature = request.headers.get('Signature-256') || request.headers.get('Signature');
-    const signatureType = request.headers.get('Signature-256') ? 'SHA-256' : 'SHA-1';
-
-    // HIGH-002: Removed verbose logging (signatureType not logged in production)
 
     if (!certUrl || !signature) {
       throw new Error('Missing signature headers');
@@ -209,16 +206,15 @@ export class AlexaVerifier {
     // Skip version [0] (optional, usually present)
     if (certDer[offset] === 0xa0) {
       offset++;
-      const versionLength = readLength();
-      offset += versionLength;
+      offset += readLength();
     }
 
     // Skip serialNumber (INTEGER)
     if (certDer[offset++] !== 0x02) throw new Error('Invalid serialNumber');
     offset += readLength();
 
-    // Skip signature (SEQUENCE)
-    if (certDer[offset++] !== 0x30) throw new Error('Invalid signature');
+    // Skip signature AlgorithmIdentifier (SEQUENCE)
+    if (certDer[offset++] !== 0x30) throw new Error('Invalid signature AlgorithmIdentifier');
     offset += readLength();
 
     // Skip issuer (SEQUENCE)

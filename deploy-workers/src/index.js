@@ -65,8 +65,8 @@ function handleCORS(request) {
 export default {
   async fetch(request, env, ctx) {
     // CRITICAL-001: Validate JWT_SECRET at startup
-    if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) {
-      console.error('❌ CRITICAL: JWT_SECRET must be at least 32 characters');
+    if (!env.JWT_SECRET) {
+      console.error('❌ CRITICAL: JWT_SECRET is not set');
       return new Response('Service configuration error', {
         status: 500,
         headers: { 'Content-Type': 'text/plain' }
