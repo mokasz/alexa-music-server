@@ -192,18 +192,24 @@ const ResumeIntentHandler = {
   handle(handlerInput) {
     // ⭐ deviceIdを優先的に取得（AudioPlayerイベントと統一）
     const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
-    const sessionId = handlerInput.requestEnvelope.session.sessionId;
+    const sessionId = handlerInput.requestEnvelope.session?.sessionId; // セッションが存在しない場合に対応
+
+    logger.info(`ResumeIntent: deviceId=${deviceId}, sessionId=${sessionId}`);
 
     // deviceId優先、なければsessionIdフォールバック
     let currentTrackId = playlistManager.getCurrentTrack(deviceId);
     let lookupId = deviceId;
 
-    if (!currentTrackId) {
+    logger.info(`ResumeIntent: currentTrackId from deviceId=${currentTrackId}`);
+
+    if (!currentTrackId && sessionId) {
       currentTrackId = playlistManager.getCurrentTrack(sessionId);
       lookupId = sessionId;
+      logger.info(`ResumeIntent: currentTrackId from sessionId=${currentTrackId}`);
     }
 
     if (!currentTrackId) {
+      logger.warn('ResumeIntent: No current track found');
       const speakOutput = '再生する曲がありません。曲名を言ってください。';
       return handlerInput.responseBuilder
         .speak(speakOutput)
@@ -213,6 +219,7 @@ const ResumeIntentHandler = {
 
     const track = musicLibrary.findById(currentTrackId);
     if (!track) {
+      logger.error(`ResumeIntent: Track not found for id=${currentTrackId}`);
       const speakOutput = '曲が見つかりませんでした。';
       return handlerInput.responseBuilder
         .speak(speakOutput)
@@ -221,7 +228,7 @@ const ResumeIntentHandler = {
 
     // ⭐ 保存された位置から再開
     const offsetInMilliseconds = playlistManager.estimatePlaybackPosition(lookupId);
-    logger.info(`Resume: ${track.title} from ${offsetInMilliseconds}ms`);
+    logger.info(`ResumeIntent: Resuming ${track.title} from ${offsetInMilliseconds}ms (lookupId=${lookupId})`);
 
     return handlerInput.responseBuilder
       .addDirective(buildAudioDirective('REPLACE_ALL', track, offsetInMilliseconds))
@@ -237,7 +244,7 @@ const FastForwardIntentHandler = {
   },
   handle(handlerInput) {
     const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
-    const sessionId = handlerInput.requestEnvelope.session.sessionId;
+    const sessionId = handlerInput.requestEnvelope.session?.sessionId; // セッションが存在しない場合に対応
     const slots = handlerInput.requestEnvelope.request.intent.slots;
 
     // slotsから秒数を取得（デフォルト15秒）
@@ -250,7 +257,7 @@ const FastForwardIntentHandler = {
     let currentTrackId = playlistManager.getCurrentTrack(deviceId);
     let lookupId = deviceId;
 
-    if (!currentTrackId) {
+    if (!currentTrackId && sessionId) {
       currentTrackId = playlistManager.getCurrentTrack(sessionId);
       lookupId = sessionId;
     }
@@ -293,7 +300,7 @@ const RewindIntentHandler = {
   },
   handle(handlerInput) {
     const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
-    const sessionId = handlerInput.requestEnvelope.session.sessionId;
+    const sessionId = handlerInput.requestEnvelope.session?.sessionId; // セッションが存在しない場合に対応
     const slots = handlerInput.requestEnvelope.request.intent.slots;
 
     // slotsから秒数を取得（デフォルト15秒）
@@ -306,7 +313,7 @@ const RewindIntentHandler = {
     let currentTrackId = playlistManager.getCurrentTrack(deviceId);
     let lookupId = deviceId;
 
-    if (!currentTrackId) {
+    if (!currentTrackId && sessionId) {
       currentTrackId = playlistManager.getCurrentTrack(sessionId);
       lookupId = sessionId;
     }
