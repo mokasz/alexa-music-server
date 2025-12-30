@@ -263,6 +263,218 @@ if (!requestBody || !requestBody.version || (!requestBody.session && !requestBod
 
 ---
 
+## 🔒 Cloudflare Workers署名検証で401エラー
+
+### 問題の概要
+
+Cloudflare Workersで`ALEXA_VERIFY_SIGNATURE=true`を有効にすると、すべてのAlexaリクエストが401エラーで失敗する。
+
+### 症状
+
+- ✅ `ALEXA_VERIFY_SIGNATURE=false`では正常に動作
+- ❌ `ALEXA_VERIFY_SIGNATURE=true`にすると401エラー
+- ❌ ログに「Certificate parsing failed」エラー
+- ❌ 「Cannot read properties of undefined (reading 'importKey')」エラー
+- ❌ 「atob() called with invalid base64-encoded data」エラー
+
+### 根本原因
+
+**複合的な環境互換性問題**：
+
+1. **@peculiar/x509ライブラリの致命的な問題**
+   - 動的インポート（`await import('@peculiar/x509')`）がCloudflare WorkersのグローバルCryptoオブジェクトを**汚染**
+   - ライブラリ内部のポリフィルが`crypto.subtle`を上書き
+   - 結果：`crypto.subtle.importKey`が`undefined`になる
+
+2. **Cloudflare Workersのatob()実装の問題**
+   - Workers環境の`atob()`がPEM証明書のbase64と完全互換ではない
+   - 改行コード、パディング、特定の文字パターンで失敗
+   - エラー：「invalid base64-encoded data」
+
+3. **環境差異**
+   - ExpressサーバーのNode.jsでは`alexa-verifier`が完璧に動作
+   - Cloudflare Workers（V8 Isolates）では全く異なる動作
+
+### 解決策
+
+**完全カスタム実装でライブラリ依存を排除：**
+
+#### 1. カスタムbase64デコーダーの実装
+
+```javascript
+/**
+ * Manual base64 decode (for certificate parsing)
+ * More reliable than atob() in Cloudflare Workers
+ */
+base64Decode(base64String) {
+  const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < base64Chars.length; i++) {
+    lookup[base64Chars.charCodeAt(i)] = i;
+  }
+
+  const len = base64String.length;
+  let bufferLength = (len * 3) / 4;
+
+  // Handle padding
+  if (base64String[len - 1] === '=') {
+    bufferLength--;
+    if (base64String[len - 2] === '=') {
+      bufferLength--;
+    }
+  }
+
+  const bytes = new Uint8Array(bufferLength);
+  let p = 0;
+
+  for (let i = 0; i < len; i += 4) {
+    const encoded1 = lookup[base64String.charCodeAt(i)];
+    const encoded2 = lookup[base64String.charCodeAt(i + 1)];
+    const encoded3 = lookup[base64String.charCodeAt(i + 2)];
+    const encoded4 = lookup[base64String.charCodeAt(i + 3)];
+
+    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+    if (i + 2 < len && base64String[i + 2] !== '=') {
+      bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    }
+    if (i + 3 < len && base64String[i + 3] !== '=') {
+      bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+    }
+  }
+
+  return bytes;
+}
+```
+
+#### 2. カスタムASN.1パーサーの実装
+
+```javascript
+/**
+ * Extract SubjectPublicKeyInfo from DER-encoded X.509 certificate
+ * This is a simplified ASN.1 parser for extracting SPKI
+ */
+extractSPKIFromDER(certDer) {
+  let offset = 0;
+
+  // Helper to read ASN.1 length
+  const readLength = () => {
+    let length = certDer[offset++];
+    if (length & 0x80) {
+      const numBytes = length & 0x7f;
+      length = 0;
+      for (let i = 0; i < numBytes; i++) {
+        length = (length << 8) | certDer[offset++];
+      }
+    }
+    return length;
+  };
+
+  // Skip outer SEQUENCE (Certificate)
+  if (certDer[offset++] !== 0x30) throw new Error('Invalid certificate structure');
+  readLength();
+
+  // Skip TBSCertificate SEQUENCE header
+  if (certDer[offset++] !== 0x30) throw new Error('Invalid TBSCertificate structure');
+  readLength();
+
+  // Skip version [0] (optional)
+  if (certDer[offset] === 0xa0) {
+    offset++;
+    offset += readLength();
+  }
+
+  // Skip serialNumber, signature, issuer, validity, subject
+  for (let i = 0; i < 5; i++) {
+    if (certDer[offset++] !== (i === 0 ? 0x02 : 0x30)) {
+      throw new Error('Invalid certificate structure');
+    }
+    offset += readLength();
+  }
+
+  // Extract SubjectPublicKeyInfo (SEQUENCE)
+  if (certDer[offset] !== 0x30) throw new Error('Invalid SPKI structure');
+  const spkiStart = offset;
+  offset++;
+  const spkiLength = readLength();
+
+  return certDer.slice(spkiStart, offset + spkiLength);
+}
+```
+
+#### 3. package.jsonから@peculiar/x509を削除
+
+```bash
+# @peculiar/x509を削除
+npm uninstall @peculiar/x509
+```
+
+#### 4. 修正後の実装
+
+```javascript
+async extractPublicKey(certPem) {
+  // Extract only valid base64 characters
+  const pemContents = certPem
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/[^A-Za-z0-9+/=]/g, '');  // Remove all non-base64 characters
+
+  // Use manual base64 decode instead of atob()
+  const certDer = this.base64Decode(pemContents);
+
+  // Parse DER to extract SubjectPublicKeyInfo
+  const spki = this.extractSPKIFromDER(certDer);
+
+  // Import the public key using Web Crypto API
+  const publicKey = await crypto.subtle.importKey(
+    'spki',
+    spki,
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      hash: 'SHA-256'
+    },
+    false,
+    ['verify']
+  );
+
+  return publicKey;
+}
+```
+
+### 実装済みのセキュリティ機能
+
+修正後、以下のセキュリティ機能が正常に動作：
+
+- ✅ Alexa署名検証（SHA-256対応）
+- ✅ 証明書キャッシング（KV、1時間TTL）
+- ✅ タイムスタンプ検証（150秒以内）
+- ✅ Skill ID検証
+- ✅ レート制限（60 requests/minute）
+
+### 重要な教訓
+
+1. **外部ライブラリの環境互換性を過信しない**
+   - Node.js用ライブラリがCloudflare Workersで動くとは限らない
+   - 特にポリフィルを使うライブラリは危険
+
+2. **環境特有のAPI実装の差異に注意**
+   - `atob()`のような基本的な関数でも実装が異なる場合がある
+
+3. **基本的なアルゴリズムの理解が最強の解決策**
+   - base64エンコーディング、ASN.1構造、X.509証明書の知識
+   - 自前実装により完全な制御が可能
+
+4. **詳細なデバッグログの重要性**
+   - 問題の特定には各ステップのログが不可欠
+   - 本番環境にデプロイ後はクリーンアップを忘れずに
+
+### 参考リンク
+
+- [Cloudflare Workers - Web Crypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)
+- [X.509 Certificate Structure](https://www.rfc-editor.org/rfc/rfc5280)
+- [Amazon Alexa Signature Verification](https://developer.amazon.com/docs/custom-skills/host-a-custom-skill-as-a-web-service.html#checking-the-signature-of-the-request)
+
+---
+
 ## このプロジェクトの最終設定
 
 ### 成功した構成

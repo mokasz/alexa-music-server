@@ -205,20 +205,9 @@ export class SessionDurableObject {
       await this.state.storage.put('session', this.session);
       await this.state.storage.put('alarmCount', this.alarmCount);
 
-      // Only backup to KV every 10 alarms (5 minutes) to reduce KV writes
-      // This keeps us within the free tier limit of 1,000 writes/day
-      const shouldBackupToKV = this.alarmCount % 10 === 0;
-
-      if (shouldBackupToKV && this.env.SESSIONS) {
-        await this.env.SESSIONS.put(
-          `session:${this.session.sessionId}`,
-          JSON.stringify(this.session),
-          { expirationTtl: 2592000 } // 30 days
-        );
-        console.log(`[Alarm] ✅ Backed up to KV for ${this.session.sessionId}: ${estimatedPosition}ms`);
-      } else {
-        console.log(`[Alarm] Updated DO storage for ${this.session.sessionId}: ${estimatedPosition}ms`);
-      }
+      // Note: KV backup removed to avoid exceeding free tier write limits
+      // Durable Objects already provide persistent storage
+      console.log(`[Alarm] Updated DO storage for ${this.session.sessionId}: ${estimatedPosition}ms`)
 
       // Schedule next alarm in 30 seconds (only if still PLAYING)
       if (this.session.playbackState === 'PLAYING') {
@@ -287,15 +276,8 @@ export class SessionDurableObject {
     // Save to storage
     await this.state.storage.put('session', this.session);
 
-    // Always backup to KV for explicit position updates (seek, pause, stop)
-    // These are user-initiated actions that need immediate backup
-    if (this.env.SESSIONS) {
-      await this.env.SESSIONS.put(
-        `session:${this.session.sessionId}`,
-        JSON.stringify(this.session),
-        { expirationTtl: 2592000 }
-      );
-    }
+    // Note: KV backup removed to avoid exceeding free tier write limits
+    // Durable Objects already provide persistent storage
 
     // Cancel alarm if not PLAYING
     if (playbackState !== 'PLAYING') {
