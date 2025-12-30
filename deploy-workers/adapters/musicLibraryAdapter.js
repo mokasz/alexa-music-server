@@ -5,7 +5,7 @@
  * Provides read-only access to music library data stored in Workers KV
  */
 
-import { normalizeString } from '@alexa-music/core/utils/textNormalizer';
+import { normalizeString, createSearchableText } from '@alexa-music/core/utils/textNormalizer';
 
 export class MusicLibraryKVAdapter {
   /**
@@ -31,9 +31,18 @@ export class MusicLibraryKVAdapter {
       }
 
       this.library = libraryData;
+
+      // Regenerate searchableText with latest normalization logic
+      // This ensures that normalization updates are applied without rescanning
+      if (this.library.tracks && Array.isArray(this.library.tracks)) {
+        this.library.tracks.forEach(track => {
+          track.searchableText = createSearchableText(track);
+        });
+      }
+
       this.isLoaded = true;
 
-      console.log(`Music library loaded: ${this.library.tracks?.length || 0} tracks`);
+      console.log(`Music library loaded: ${this.library.tracks?.length || 0} tracks (searchableText regenerated)`);
     } catch (error) {
       console.error('Failed to initialize music library:', error);
       throw error;
@@ -58,10 +67,29 @@ export class MusicLibraryKVAdapter {
     const normalizedQuery = normalizeString(query.toLowerCase());
     const tracks = this.library.tracks || [];
 
-    // Search in searchableText field (pre-normalized)
+    // Search in both title and searchableText fields
+    // Check both original and katakana-to-hiragana converted forms
     const results = tracks.filter(track => {
-      const searchableText = track.searchableText || '';
-      return searchableText.includes(normalizedQuery);
+      const searchableText = (track.searchableText || '').toLowerCase();
+      const title = normalizeString((track.title || '').toLowerCase());
+      const artist = normalizeString((track.artist || '').toLowerCase());
+
+      // Check direct matches
+      if (searchableText.includes(normalizedQuery) ||
+          title.includes(normalizedQuery) ||
+          artist.includes(normalizedQuery)) {
+        return true;
+      }
+
+      // Also check without number/special chars for partial matches
+      const queryWithoutNumbers = normalizedQuery.replace(/[0-9]/g, '');
+      const titleWithoutNumbers = title.replace(/[0-9]/g, '');
+
+      if (queryWithoutNumbers && titleWithoutNumbers.includes(queryWithoutNumbers)) {
+        return true;
+      }
+
+      return false;
     });
 
     // Sort by relevance (title matches first, then artist, then album)

@@ -105,7 +105,14 @@ class MusicLibrary {
       const db = JSON.parse(data);
 
       this.tracks = db.tracks || [];
-      logger.info(`Loaded ${this.tracks.length} tracks from database`);
+
+      // Regenerate searchableText with latest normalization logic
+      // This ensures that normalization updates are applied without rescanning
+      this.tracks.forEach(track => {
+        track.searchableText = createSearchableText(track);
+      });
+
+      logger.info(`Loaded ${this.tracks.length} tracks from database (searchableText regenerated)`);
     } catch (error) {
       if (error.code === 'ENOENT') {
         logger.info('No existing database found. Will create new one after scanning.');

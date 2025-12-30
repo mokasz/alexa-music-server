@@ -2,7 +2,16 @@
  * Session Durable Object
  *
  * Manages playback session state with automatic position tracking
- * Uses Durable Object Alarms to record position every 30 seconds
+ *
+ * Position Tracking Strategy (Hybrid Approach):
+ * - Durable Object Storage: Updated every 30 seconds (high precision)
+ * - KV Backup: Updated every 5 minutes (10 alarms) to minimize KV writes
+ *
+ * This hybrid approach ensures:
+ * - High precision position tracking (30s) via Durable Object storage
+ * - Reliable backup via KV (5min) while staying within free tier limits
+ * - Free tier KV limit: 1,000 writes/day
+ * - Expected usage: ~288 KV writes/day (24h × 12 writes/hour)
  */
 
 export class SessionDurableObject {
@@ -38,6 +47,10 @@ export class SessionDurableObject {
         playbackStartedAt: null,  // ISO timestamp when playback started
         playbackStartOffset: 0     // offsetInMilliseconds when playback started
       };
+
+      // Load alarm counter (for KV backup throttling)
+      // KV writes only every 10 alarms (5 minutes) to stay within free tier limits
+      this.alarmCount = await this.state.storage.get('alarmCount') || 0;
     });
   }
 
@@ -164,10 +177,11 @@ export class SessionDurableObject {
 
   /**
    * Alarm handler - Called every 30 seconds while PLAYING
-   * Saves estimated position to KV as backup
+   * Saves position to Durable Object storage every 30s
+   * Backs up to KV every 5 minutes (10 alarms) to reduce KV writes
    */
   async alarm() {
-    console.log(`[Alarm] Triggered for session ${this.session.sessionId}`);
+    console.log(`[Alarm] Triggered for session ${this.session.sessionId} (count: ${this.alarmCount + 1})`);
 
     try {
       // Only process if session is PLAYING
@@ -175,6 +189,9 @@ export class SessionDurableObject {
         console.log(`[Alarm] Session ${this.session.sessionId} is ${this.session.playbackState}, skipping`);
         return;
       }
+
+      // Increment alarm counter
+      this.alarmCount++;
 
       // Estimate current position
       const estimatedPosition = this.estimatePlaybackPosition();
@@ -184,13 +201,13 @@ export class SessionDurableObject {
       this.session.lastPlaybackTimestamp = new Date().toISOString();
       this.session.updatedAt = new Date().toISOString();
 
-      // Save to Durable Object storage
+      // Always save to Durable Object storage (30 second precision)
       await this.state.storage.put('session', this.session);
+      await this.state.storage.put('alarmCount', this.alarmCount);
 
       // Note: KV backup removed to avoid exceeding free tier write limits
       // Durable Objects already provide persistent storage
-
-      console.log(`[Alarm] Updated position for ${this.session.sessionId}: ${estimatedPosition}ms`);
+      console.log(`[Alarm] Updated DO storage for ${this.session.sessionId}: ${estimatedPosition}ms`)
 
       // Schedule next alarm in 30 seconds (only if still PLAYING)
       if (this.session.playbackState === 'PLAYING') {

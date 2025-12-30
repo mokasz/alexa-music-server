@@ -96,6 +96,7 @@ export const PlayMusicIntentHandler = {
     }
 
     console.log(`PlayMusicIntent: query="${query}" (deviceId: ${deviceId})`);
+    console.log(`Query character codes:`, Array.from(query).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
 
     if (!query) {
       const speakOutput = '曲名が聞き取れませんでした。もう一度言ってください。';
@@ -107,6 +108,7 @@ export const PlayMusicIntentHandler = {
 
     // Search for tracks (async)
     const results = await musicLibrary.searchTracks(query.trim());
+    console.log(`Search results: ${results.length} tracks found`);
 
     if (results.length === 0) {
       const speakOutput = `${query}が見つかりませんでした。別の曲名で試してください。`;
@@ -246,17 +248,22 @@ export const ResumeIntentHandler = {
   },
   async handle(handlerInput) {
     const { musicLibrary, playlistManager } = handlerInput.requestEnvelope.context.env;
-    const sessionId = handlerInput.requestEnvelope.session.sessionId;
+    const sessionId = handlerInput.requestEnvelope.session?.sessionId; // セッションが存在しない場合に対応
     const deviceId = handlerInput.requestEnvelope.context.System.device.deviceId;
+
+    console.log(`ResumeIntent: deviceId=${deviceId}, sessionId=${sessionId}`);
 
     // deviceIdで試す（AudioPlayerイベントはdeviceIdで保存される）
     let trackId = await playlistManager.getCurrentTrack(deviceId);
     let lookupId = deviceId;
 
+    console.log(`ResumeIntent: trackId from deviceId=${trackId}`);
+
     // deviceIdで見つからなければsessionIdで試す
-    if (!trackId) {
+    if (!trackId && sessionId) {
       trackId = await playlistManager.getCurrentTrack(sessionId);
       lookupId = sessionId;
+      console.log(`ResumeIntent: trackId from sessionId=${trackId}`);
     }
 
     if (!trackId) {
