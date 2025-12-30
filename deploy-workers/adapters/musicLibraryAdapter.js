@@ -5,7 +5,7 @@
  * Provides read-only access to music library data stored in Workers KV
  */
 
-import { normalizeString } from '@alexa-music/core/utils/textNormalizer';
+import { normalizeString, createSearchableText } from '@alexa-music/core/utils/textNormalizer';
 
 export class MusicLibraryKVAdapter {
   /**
@@ -31,9 +31,18 @@ export class MusicLibraryKVAdapter {
       }
 
       this.library = libraryData;
+
+      // Regenerate searchableText with latest normalization logic
+      // This ensures that normalization updates are applied without rescanning
+      if (this.library.tracks && Array.isArray(this.library.tracks)) {
+        this.library.tracks.forEach(track => {
+          track.searchableText = createSearchableText(track);
+        });
+      }
+
       this.isLoaded = true;
 
-      console.log(`Music library loaded: ${this.library.tracks?.length || 0} tracks`);
+      console.log(`Music library loaded: ${this.library.tracks?.length || 0} tracks (searchableText regenerated)`);
     } catch (error) {
       console.error('Failed to initialize music library:', error);
       throw error;
