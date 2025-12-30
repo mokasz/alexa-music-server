@@ -82,6 +82,7 @@ export const PlayMusicIntentHandler = {
     }
 
     console.log(`PlayMusicIntent: query="${query}" (deviceId: ${deviceId})`);
+    console.log(`Query character codes:`, Array.from(query).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
 
     if (!query) {
       const speakOutput = '曲名が聞き取れませんでした。もう一度言ってください。';
@@ -93,6 +94,7 @@ export const PlayMusicIntentHandler = {
 
     // Search for tracks (async)
     const results = await musicLibrary.searchTracks(query.trim());
+    console.log(`Search results: ${results.length} tracks found`);
 
     if (results.length === 0) {
       const speakOutput = `${query}が見つかりませんでした。別の曲名で試してください。`;
