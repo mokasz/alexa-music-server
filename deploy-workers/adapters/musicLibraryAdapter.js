@@ -58,10 +58,29 @@ export class MusicLibraryKVAdapter {
     const normalizedQuery = normalizeString(query.toLowerCase());
     const tracks = this.library.tracks || [];
 
-    // Search in searchableText field (pre-normalized)
+    // Search in both title and searchableText fields
+    // Check both original and katakana-to-hiragana converted forms
     const results = tracks.filter(track => {
-      const searchableText = track.searchableText || '';
-      return searchableText.includes(normalizedQuery);
+      const searchableText = (track.searchableText || '').toLowerCase();
+      const title = normalizeString((track.title || '').toLowerCase());
+      const artist = normalizeString((track.artist || '').toLowerCase());
+
+      // Check direct matches
+      if (searchableText.includes(normalizedQuery) ||
+          title.includes(normalizedQuery) ||
+          artist.includes(normalizedQuery)) {
+        return true;
+      }
+
+      // Also check without number/special chars for partial matches
+      const queryWithoutNumbers = normalizedQuery.replace(/[0-9]/g, '');
+      const titleWithoutNumbers = title.replace(/[0-9]/g, '');
+
+      if (queryWithoutNumbers && titleWithoutNumbers.includes(queryWithoutNumbers)) {
+        return true;
+      }
+
+      return false;
     });
 
     // Sort by relevance (title matches first, then artist, then album)
